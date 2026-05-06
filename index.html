@@ -3,7 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>text cleaner | pattern filter</title>
+    <title>ReM0ve</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
     <style>
       * {
         box-sizing: border-box;
@@ -95,7 +96,20 @@
         border-radius: 20px;
       }
 
-      /* pattern row - clean minimal */
+      .github-link {
+        font-size: 0.7rem;
+        color: var(--text-primary);
+        text-decoration: none;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .github-link:hover {
+        text-decoration: underline;
+      }
+
+      /* pattern row */
       .pattern-bar {
         background: var(--bg-panel);
         border: 1px solid var(--border-input);
@@ -111,6 +125,7 @@
       .field {
         flex: 1;
         min-width: 160px;
+        position: relative;
       }
 
       .field label {
@@ -141,6 +156,82 @@
         background: var(--bg-input);
       }
 
+      /* Custom Select Menu */
+      .custom-select {
+        position: relative;
+        width: 100%;
+      }
+
+      .custom-select-trigger {
+        background: var(--bg-input);
+        border: 1px solid var(--border-input);
+        border-radius: 8px;
+        padding: 8px 12px;
+        font-family: "SF Mono", monospace;
+        font-size: 0.8rem;
+        color: var(--text-primary);
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        user-select: none;
+      }
+
+      .custom-select-trigger::after {
+        content: "▼";
+        font-size: 0.6rem;
+        color: var(--text-secondary);
+      }
+
+      .custom-options {
+        position: absolute;
+        top: calc(100% + 5px);
+        left: 0;
+        width: 100%;
+        background: var(--bg-input);
+        border: 1px solid var(--border-input);
+        border-radius: 8px;
+        z-index: 10;
+        overflow: hidden;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+
+        /* GSAP initial hidden state */
+        height: 0;
+        opacity: 0;
+        visibility: hidden;
+      }
+
+      .custom-option {
+        padding: 10px 12px;
+        font-size: 0.75rem;
+        cursor: pointer;
+        border-bottom: 1px solid var(--border-input);
+      }
+
+      .custom-option:last-child {
+        border-bottom: none;
+      }
+
+      .custom-option:hover {
+        background: var(--bg-panel-header);
+      }
+
+      /* Dynamic Tooltip */
+      #mouseTooltip {
+        position: fixed;
+        background: var(--text-primary);
+        color: var(--bg-body);
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-size: 0.7rem;
+        pointer-events: none;
+        z-index: 9999;
+        display: none;
+        max-width: 220px;
+        line-height: 1.4;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+      }
+
       button {
         background: var(--button-bg);
         border: 1px solid var(--button-border);
@@ -161,21 +252,28 @@
       }
 
       .apply-btn {
-        background: var(--button-bg);
+        background: var(--text-primary);
         border-color: var(--button-border);
-        color: var(--text-primary);
+        color: var(--bg-body);
       }
 
       .apply-btn:hover {
-        background: var(--button-hover);
+        background: var(--text-secondary);
+        color: var(--bg-body);
       }
 
-      /* two columns: input / output */
+      /* WORKSPACE & SYMMETRY FIXES */
       .workspace {
         display: flex;
-        flex-wrap: wrap;
         gap: 1.8rem;
         margin-top: 0.5rem;
+        align-items: stretch; /* Ensures both columns match height */
+      }
+
+      @media (max-width: 768px) {
+        .workspace {
+          flex-direction: column;
+        }
       }
 
       .panel {
@@ -187,6 +285,7 @@
         overflow: hidden;
         display: flex;
         flex-direction: column;
+        min-height: 500px; /* Base height for symmetry */
       }
 
       .panel-header {
@@ -200,9 +299,18 @@
         color: var(--text-secondary);
         display: flex;
         justify-content: space-between;
+        flex-shrink: 0;
+      }
+
+      /* Container for text areas so they flex properly */
+      .textarea-wrapper {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
       }
 
       .textarea-clean {
+        flex: 1;
         background: var(--bg-input);
         color: var(--text-primary);
         font-family: "SF Mono", "Fira Code", monospace;
@@ -210,14 +318,27 @@
         line-height: 1.5;
         padding: 1rem;
         border: none;
-        resize: vertical;
         width: 100%;
-        min-height: 420px;
         outline: none;
+        resize: none; /* Disabled manual resize to force symmetry */
       }
 
-      .textarea-clean:focus {
-        background: var(--bg-input);
+      /* Split View Layout */
+      .split-layout {
+        display: none; /* hidden by default, switched to flex in JS */
+        flex-direction: column;
+        flex: 1;
+      }
+
+      .split-divider {
+        height: 1px;
+        background: var(--border-input);
+        width: 100%;
+        flex-shrink: 0;
+      }
+
+      .interactive-output {
+        cursor: cell;
       }
 
       .stats {
@@ -229,6 +350,7 @@
         background: var(--stats-bg);
         display: flex;
         justify-content: space-between;
+        flex-shrink: 0;
       }
 
       .note {
@@ -248,13 +370,11 @@
         color: var(--inline-code-color);
       }
 
-      /* remove row is eliminated, only pattern cleaning and copy/paste flow */
       ::selection {
         background: #444;
         color: white;
       }
 
-      /* toggle button style (minimal, matches theme) */
       .theme-toggle {
         background: var(--button-bg);
         border: 1px solid var(--button-border);
@@ -279,16 +399,38 @@
       .header-right {
         display: flex;
         align-items: center;
-        gap: 12px;
+        gap: 16px;
       }
     </style>
   </head>
   <body>
+    <div id="mouseTooltip"></div>
+
     <div class="app">
       <div class="header">
-        <h1>// text pattern cleaner</h1>
+        <h1>// ReM0ve</h1>
         <div class="header-right">
-          <div class="version">remove before / after · inline filter</div>
+          <a
+            href="https://github.com/skiraware"
+            target="_blank"
+            class="github-link"
+          >
+            <svg
+              height="16"
+              aria-hidden="true"
+              viewBox="0 0 16 16"
+              version="1.1"
+              width="16"
+              data-view-component="true"
+              fill="currentColor"
+            >
+              <path
+                d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.46-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"
+              ></path>
+            </svg>
+            skiraware
+          </a>
+          <div class="version">advanced parsing & filter modes</div>
           <button
             id="darkModeToggle"
             class="theme-toggle"
@@ -301,66 +443,117 @@
 
       <div class="pattern-bar">
         <div class="field">
-          <label>remove before (including)</label>
-          <input
-            type="text"
-            id="beforeDelim"
-            placeholder="example: \\"
-            value="\\"
-          />
+          <label>Operating Mode</label>
+
+          <div class="custom-select" id="customSelect">
+            <div class="custom-select-trigger" id="selectTrigger">
+              Extract User:Hash
+            </div>
+            <div class="custom-options" id="selectOptions">
+              <div
+                class="custom-option"
+                data-value="hashcat"
+                data-desc="Locates colon-separated values, ignores HTML tags, and drops non-matching lines."
+              >
+                Extract User:Hash
+              </div>
+              <div
+                class="custom-option"
+                data-value="basic"
+                data-desc="Removes unwanted strings occurring before or after your specified delimiters."
+              >
+                Basic Cut
+              </div>
+              <div
+                class="custom-option"
+                data-value="keepRegex"
+                data-desc="Scans the input and only keeps lines that match your custom regular expression."
+              >
+                Regex Keep
+              </div>
+              <div
+                class="custom-option"
+                data-value="split"
+                data-desc="Splits lines by a colon into two separate output boxes (upper & lower)."
+              >
+                Split Output
+              </div>
+            </div>
+          </div>
         </div>
         <div class="field">
-          <label>remove after (including)</label>
-          <input
-            type="text"
-            id="afterDelim"
-            placeholder="example: ("
-            value="("
-          />
+          <label>remove before</label>
+          <input type="text" id="beforeDelim" placeholder="example: \\" />
         </div>
         <div class="field">
-          <label>extra regex (optional)</label>
-          <input type="text" id="regexField" placeholder="e.g. \\s*\\(.*$" />
+          <label>remove after</label>
+          <input type="text" id="afterDelim" placeholder="example: (" />
+        </div>
+        <div class="field">
+          <label>custom regex</label>
+          <input type="text" id="regexField" placeholder="e.g. ^admin" />
         </div>
         <div>
-          <button id="applyCleanBtn" class="apply-btn">apply patterns</button>
+          <button id="applyCleanBtn" class="apply-btn">Run Filter</button>
         </div>
       </div>
 
       <div class="workspace">
-        <!-- INPUT PANEL -->
         <div class="panel">
           <div class="panel-header">
             <span>INPUT (raw text)</span>
             <span>paste or type</span>
           </div>
-          <textarea
-            id="inputArea"
-            class="textarea-clean"
-            placeholder="Paste your lines here."
-          ></textarea>
+          <div class="textarea-wrapper">
+            <textarea
+              id="inputArea"
+              class="textarea-clean"
+              placeholder="Paste your messy lines or HTML code here..."
+            ></textarea>
+          </div>
           <div class="stats">
             <span>lines: <span id="inputLines">0</span></span>
-            <span>last update: live</span>
+            <span
+              >repo updated: <span id="repoUpdateText">fetching...</span></span
+            >
           </div>
         </div>
 
-        <!-- OUTPUT PANEL (cleaned result) -->
         <div class="panel">
           <div class="panel-header">
-            <span>OUTPUT (after rules)</span>
-            <span>copy directly</span>
+            <span>OUTPUT (cleaned)</span>
+            <span>double-click line to remove</span>
           </div>
-          <textarea
-            id="outputArea"
-            class="textarea-clean"
-            readonly
-            placeholder="Cleaned text will appear here after applying patterns..."
-          ></textarea>
+
+          <div id="singleLayout" class="textarea-wrapper">
+            <textarea
+              id="outputArea"
+              class="textarea-clean interactive-output"
+              readonly
+              placeholder="Cleaned text will appear here..."
+            ></textarea>
+          </div>
+
+          <div id="splitLayout" class="split-layout">
+            <textarea
+              id="outputAreaTop"
+              class="textarea-clean interactive-output"
+              readonly
+              placeholder="Upper split results..."
+            ></textarea>
+            <div class="split-divider"></div>
+            <textarea
+              id="outputAreaBottom"
+              class="textarea-clean interactive-output"
+              readonly
+              placeholder="Lower split results..."
+            ></textarea>
+          </div>
+
           <div class="stats">
             <span>cleaned lines: <span id="outputLines">0</span></span>
-            <span
-              ><button
+            <span>
+              <button
                 id="copyOutputBtn"
                 style="
                   background: transparent;
@@ -370,297 +563,348 @@
                 "
               >
                 copy to clipboard
-              </button></span
-            >
+              </button>
+            </span>
           </div>
         </div>
       </div>
 
       <div class="note">
-        <span class="inline-code">remove before \</span> : deletes everything
-        before the first backslash (including backslash) → "domain\user" becomes
-        "user"<br />
-        <span class="inline-code">remove after (</span> : deletes everything
-        after the first '(' (including '(') → "user (SidType)" becomes "user
-        "<br />
-        extra regex: additional cleanup (executed after before/after).
-        <strong>no row deletion, no modal popups</strong> — just clean and copy.
+        <strong>New Features:</strong> Double-click any line in the OUTPUT box
+        to instantly delete it. <br />
+        <span class="inline-code">Split Output</span> mode will break user:pass
+        formats into perfectly symmetrical upper and lower panels.
       </div>
     </div>
 
     <script>
-      // DOM elements
       const inputTextarea = document.getElementById("inputArea");
       const outputTextarea = document.getElementById("outputArea");
+      const outputTop = document.getElementById("outputAreaTop");
+      const outputBottom = document.getElementById("outputAreaBottom");
+
       const beforeInput = document.getElementById("beforeDelim");
       const afterInput = document.getElementById("afterDelim");
       const regexInput = document.getElementById("regexField");
       const applyBtn = document.getElementById("applyCleanBtn");
       const copyBtn = document.getElementById("copyOutputBtn");
-      const inputLinesSpan = document.getElementById("inputLines");
-      const outputLinesSpan = document.getElementById("outputLines");
 
-      // --- LIGHT / DARK MODE TOGGLE ---
-      const toggleBtn = document.getElementById("darkModeToggle");
-      // Check for saved preference
-      if (localStorage.getItem("theme") === "dark") {
-        document.body.classList.add("dark");
-      } else if (localStorage.getItem("theme") === "light") {
-        document.body.classList.remove("dark");
-      } else {
-        // if no preference, check system preference
-        if (
-          window.matchMedia &&
-          window.matchMedia("(prefers-color-scheme: dark)").matches
-        ) {
-          document.body.classList.add("dark");
-          localStorage.setItem("theme", "dark");
-        } else {
-          document.body.classList.remove("dark");
-          localStorage.setItem("theme", "light");
-        }
+      // Layout Toggles
+      const singleLayout = document.getElementById("singleLayout");
+      const splitLayout = document.getElementById("splitLayout");
+
+      // Fetch GitHub Update Time
+      fetch("https://api.github.com/repos/skiraware/ReM0ve")
+        .then((response) => response.json())
+        .then((data) => {
+          if (data.updated_at) {
+            const date = new Date(data.updated_at);
+            document.getElementById("repoUpdateText").innerText =
+              date.toLocaleString();
+          } else {
+            document.getElementById("repoUpdateText").innerText = "unknown";
+          }
+        })
+        .catch(() => {
+          document.getElementById("repoUpdateText").innerText =
+            "failed to load";
+        });
+
+      // Custom Select Logic & GSAP Animation
+      let currentMode = "hashcat"; // default mode
+      const selectTrigger = document.getElementById("selectTrigger");
+      const selectOptions = document.getElementById("selectOptions");
+      const optionsNodes = document.querySelectorAll(".custom-option");
+      const tooltip = document.getElementById("mouseTooltip");
+
+      let isDropdownOpen = false;
+
+      function closeDropdown() {
+        if (!isDropdownOpen) return;
+        gsap.to(selectOptions, {
+          duration: 0.2,
+          height: 0,
+          opacity: 0,
+          ease: "power2.in",
+          onComplete: () => {
+            gsap.set(selectOptions, { visibility: "hidden" });
+          },
+        });
+        isDropdownOpen = false;
       }
 
-      toggleBtn.addEventListener("click", () => {
-        if (document.body.classList.contains("dark")) {
-          document.body.classList.remove("dark");
-          localStorage.setItem("theme", "light");
-        } else {
-          document.body.classList.add("dark");
-          localStorage.setItem("theme", "dark");
+      function openDropdown() {
+        if (isDropdownOpen) return;
+        gsap.set(selectOptions, { visibility: "visible" });
+        gsap.to(selectOptions, {
+          duration: 0.3,
+          height: "auto",
+          opacity: 1,
+          ease: "power2.out",
+        });
+        isDropdownOpen = true;
+      }
+
+      selectTrigger.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (isDropdownOpen) closeDropdown();
+        else openDropdown();
+      });
+
+      // Close dropdown if clicked outside
+      window.addEventListener("click", (e) => {
+        if (!document.getElementById("customSelect").contains(e.target)) {
+          closeDropdown();
         }
       });
 
-      // core cleaning function (applies all rules to a single line)
-      function cleanLine(rawLine, beforeDelim, afterDelim, regexPattern) {
+      optionsNodes.forEach((option) => {
+        // Option selection
+        option.addEventListener("click", function (e) {
+          e.stopPropagation();
+          currentMode = this.getAttribute("data-value");
+          selectTrigger.innerText = this.innerText;
+          closeDropdown();
+          processAndClean();
+        });
+
+        // Mouse hover for tooltip
+        option.addEventListener("mouseenter", function () {
+          tooltip.innerText = this.getAttribute("data-desc");
+          tooltip.style.display = "block";
+        });
+
+        option.addEventListener("mousemove", function (e) {
+          tooltip.style.left = e.clientX + 15 + "px";
+          tooltip.style.top = e.clientY + 15 + "px";
+        });
+
+        option.addEventListener("mouseleave", function () {
+          tooltip.style.display = "none";
+        });
+      });
+
+      // Theme toggle
+      const toggleBtn = document.getElementById("darkModeToggle");
+      if (
+        localStorage.getItem("theme") === "dark" ||
+        (!localStorage.getItem("theme") &&
+          window.matchMedia("(prefers-color-scheme: dark)").matches)
+      ) {
+        document.body.classList.add("dark");
+      }
+      toggleBtn.addEventListener("click", () => {
+        document.body.classList.toggle("dark");
+        localStorage.setItem(
+          "theme",
+          document.body.classList.contains("dark") ? "dark" : "light",
+        );
+      });
+
+      // Original clean logic
+      function cleanLineBasic(rawLine, beforeDelim, afterDelim, regexPattern) {
         if (!rawLine.trim()) return "";
         let result = rawLine;
-
-        // 1) remove BEFORE delimiter (including the delimiter itself)
-        if (beforeDelim && beforeDelim !== "") {
+        if (beforeDelim) {
           const idx = result.indexOf(beforeDelim);
-          if (idx !== -1) {
-            result = result.substring(idx + beforeDelim.length);
-          }
+          if (idx !== -1) result = result.substring(idx + beforeDelim.length);
         }
-
-        // 2) remove AFTER delimiter (including the delimiter)
-        if (afterDelim && afterDelim !== "") {
+        if (afterDelim) {
           const idx = result.indexOf(afterDelim);
-          if (idx !== -1) {
-            result = result.substring(0, idx);
-          }
+          if (idx !== -1) result = result.substring(0, idx);
         }
-
-        // 3) optional custom regex (global replace)
-        if (regexPattern && regexPattern.trim() !== "") {
+        if (regexPattern) {
           try {
-            const regex = new RegExp(regexPattern, "g");
-            result = result.replace(regex, "");
-          } catch (e) {
-            // silent fail, do not break user flow
-            console.warn("regex error", e);
-          }
+            result = result.replace(new RegExp(regexPattern, "g"), "");
+          } catch (e) {}
         }
-
-        // trim whitespace and return
-        result = result.trim();
-        return result;
+        return result.trim();
       }
 
-      // process full input text, split lines, apply cleaning, deduplicate repeated objects (spec requirement)
-      function processAndClean(shouldDeduplicate = true) {
+      // Main processor
+      function processAndClean() {
         const rawText = inputTextarea.value;
         if (!rawText.trim()) {
           outputTextarea.value = "";
-          updateStats();
+          outputTop.value = "";
+          outputBottom.value = "";
+          updateLineCounters();
           return;
         }
 
-        let lines = rawText.split(/\r?\n/);
+        const lines = rawText.split(/\r?\n/);
         const beforeVal = beforeInput.value;
         const afterVal = afterInput.value;
         const regexVal = regexInput.value;
 
-        // clean each line
-        let cleanedLines = lines.map((line) =>
-          cleanLine(line, beforeVal, afterVal, regexVal),
-        );
-        // filter out completely empty cleaned lines? but keep if original had content? we keep only non-empty cleaned strings
-        cleanedLines = cleanedLines.filter((line) => line !== "");
+        let cleanedLines = [];
+        let topLines = [];
+        let bottomLines = [];
 
-        // DEDUPLICATE: remove repeated objects (based on cleaned text)
-        if (shouldDeduplicate) {
-          const seen = new Set();
-          const uniqueCleaned = [];
-          for (const line of cleanedLines) {
-            if (!seen.has(line)) {
-              seen.add(line);
-              uniqueCleaned.push(line);
+        // MODE 1: Extract User:Hash (Removes non-matching lines automatically)
+        if (currentMode === "hashcat") {
+          singleLayout.style.display = "flex";
+          splitLayout.style.display = "none";
+          for (let line of lines) {
+            let text = line.replace(/\u00A0/g, " ");
+            let match = text.match(/([^\s>]+)\s*:\s*([^\s<]+)/);
+            if (match) {
+              cleanedLines.push(`${match[1]}:${match[2]}`);
             }
           }
-          cleanedLines = uniqueCleaned;
         }
 
-        // update output
-        outputTextarea.value = cleanedLines.join("\n");
-        updateStats();
+        // MODE 2: Split Output Mode (Upper & Lower)
+        else if (currentMode === "split") {
+          singleLayout.style.display = "none";
+          splitLayout.style.display = "flex";
+          for (let line of lines) {
+            let text = line.replace(/\u00A0/g, " ").trim();
+            if (!text) continue;
+            let splitIdx = text.indexOf(":");
+            if (splitIdx !== -1) {
+              topLines.push(text.substring(0, splitIdx).trim());
+              bottomLines.push(text.substring(splitIdx + 1).trim());
+            }
+          }
+        }
+
+        // MODE 3: Keep matching Regex (Removes non-matching lines)
+        else if (currentMode === "keepRegex") {
+          singleLayout.style.display = "flex";
+          splitLayout.style.display = "none";
+          let rx;
+          try {
+            rx = regexVal ? new RegExp(regexVal) : /.*/;
+          } catch (e) {
+            rx = /.*/;
+          }
+          for (let line of lines) {
+            if (rx.test(line)) {
+              cleanedLines.push(cleanLineBasic(line, beforeVal, afterVal, ""));
+            }
+          }
+        }
+
+        // MODE 4: Basic pattern cleaner
+        else {
+          singleLayout.style.display = "flex";
+          splitLayout.style.display = "none";
+          cleanedLines = lines.map((line) =>
+            cleanLineBasic(line, beforeVal, afterVal, regexVal),
+          );
+        }
+
+        // Remove empty lines and Deduplicate
+        if (currentMode !== "split") {
+          cleanedLines = cleanedLines.filter((line) => line !== "");
+          cleanedLines = [...new Set(cleanedLines)];
+          outputTextarea.value = cleanedLines.join("\n");
+        } else {
+          outputTop.value = topLines.join("\n");
+          outputBottom.value = bottomLines.join("\n");
+        }
+
+        updateLineCounters();
       }
 
-      // update line counters
-      function updateStats() {
-        const inputLines = inputTextarea.value
-          .split(/\r?\n/)
-          .filter((l) => l.trim() !== "").length;
-        const outputLines = outputTextarea.value
-          .split(/\r?\n/)
-          .filter((l) => l.trim() !== "").length;
-        document.getElementById("inputLines").innerText = inputLines;
-        document.getElementById("outputLines").innerText = outputLines;
+      // Double-click to remove line helper function
+      function applyDoubleClickRemoval(textareaEl) {
+        textareaEl.addEventListener("dblclick", function (e) {
+          const pos = this.selectionStart;
+          const val = this.value;
+          if (!val) return;
+
+          const lines = val.split("\n");
+          let currentLength = 0;
+          let lineToRemove = -1;
+
+          for (let i = 0; i < lines.length; i++) {
+            if (
+              pos >= currentLength &&
+              pos <= currentLength + lines[i].length
+            ) {
+              lineToRemove = i;
+              break;
+            }
+            currentLength += lines[i].length + 1;
+          }
+
+          if (lineToRemove !== -1) {
+            lines.splice(lineToRemove, 1);
+            this.value = lines.join("\n");
+            updateLineCounters();
+          }
+        });
       }
 
-      // copy output to clipboard (simple, no popup)
+      // Apply double click removal to all output textareas
+      applyDoubleClickRemoval(outputTextarea);
+      applyDoubleClickRemoval(outputTop);
+      applyDoubleClickRemoval(outputBottom);
+
+      function updateLineCounters() {
+        document.getElementById("inputLines").innerText = inputTextarea.value
+          .split(/\r?\n/)
+          .filter((l) => l.trim()).length;
+
+        let outCount = 0;
+        if (currentMode === "split") {
+          outCount = Math.max(
+            outputTop.value.split(/\r?\n/).filter((l) => l.trim()).length,
+            outputBottom.value.split(/\r?\n/).filter((l) => l.trim()).length,
+          );
+        } else {
+          outCount = outputTextarea.value
+            .split(/\r?\n/)
+            .filter((l) => l.trim()).length;
+        }
+        document.getElementById("outputLines").innerText = outCount;
+      }
+
       function copyOutputToClipboard() {
-        const outputText = outputTextarea.value;
-        if (!outputText.trim()) {
-          const copyBtnEl = document.getElementById("copyOutputBtn");
-          const originalText = copyBtnEl.innerText;
-          copyBtnEl.innerText = "nothing to copy";
-          setTimeout(() => {
-            copyBtnEl.innerText = originalText;
-          }, 1000);
-          return;
+        let outputText = "";
+        if (currentMode === "split") {
+          outputText = outputTop.value + "\n\n" + outputBottom.value;
+        } else {
+          outputText = outputTextarea.value;
         }
-        navigator.clipboard
-          .writeText(outputText)
-          .then(() => {
-            const copyBtnEl = document.getElementById("copyOutputBtn");
-            const original = copyBtnEl.innerText;
-            copyBtnEl.innerText = "copied!";
-            setTimeout(() => {
-              copyBtnEl.innerText = original;
-            }, 1200);
-          })
-          .catch(() => {
-            const copyBtnEl = document.getElementById("copyOutputBtn");
-            copyBtnEl.innerText = "error";
-            setTimeout(() => {
-              copyBtnEl.innerText = "copy to clipboard";
-            }, 800);
-          });
+
+        if (!outputText.trim()) return;
+        navigator.clipboard.writeText(outputText).then(() => {
+          const original = copyBtn.innerText;
+          copyBtn.innerText = "copied!";
+          setTimeout(() => (copyBtn.innerText = original), 1200);
+        });
       }
 
-      // auto-trigger on input change? we apply on button click only to avoid excessive recalculation
-      // also on delimiter change you must click apply (clean & predictable)
-      // but we also add automatic refresh when input changes? optional but user-spec: "when i input this strings, my hover and it can delete repeated objects"
-      // since we removed hover row deletion, but keep auto-deduplication each time user hits apply.
-      // we can also add realtime dedup? but simplicity: apply button does the full clean + duplicate removal.
+      // Events
+      applyBtn.addEventListener("click", processAndClean);
+      copyBtn.addEventListener("click", copyOutputToClipboard);
+      inputTextarea.addEventListener("input", updateLineCounters);
 
-      // additionally we listen to 'paste' and then user likely wants to auto-clean? but spec says "when i input this strings" but now we have explicit apply.
-      // However we add a "auto refresh on input change" if needed? No, to reduce confusion, we provide clear workflow.
-      // Enhance: pressing Ctrl+Enter in input triggers apply cleaning
       inputTextarea.addEventListener("keydown", (e) => {
         if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
           e.preventDefault();
-          processAndClean(true);
+          processAndClean();
         }
       });
 
-      // initial demo content similar to the user's SMB example (black/white friendly)
-      const defaultDemo = ``;
+      // Demo payload
+      const demoData = `admin                                             :665a50ac9eaa781e4f7f04199db97a11
+3
+admin :21232f297a57a5a743894a0e4a801fc3
+3
+<div class="d-flex movie align-items-end">
+	<div class="mr-auto p-2">
+		<h5 class="p-2">Robert                                            :f03b910e2bd0313a23fdd7575f34a694                  </h5>
+	</div>
+</div>`;
 
-      // set demo input
-      inputTextarea.value = defaultDemo;
-
-      // event handlers
-      applyBtn.addEventListener("click", () => {
-        processAndClean(true); // with duplicate removal (delete repeated objects)
-      });
-
-      copyBtn.addEventListener("click", copyOutputToClipboard);
-
-      // optional: after input change or paste, we do not auto-clean to avoid confusion.
-      // but we still show stats of input lines
-      inputTextarea.addEventListener("input", () => {
-        const lines = inputTextarea.value
-          .split(/\r?\n/)
-          .filter((l) => l.trim() !== "").length;
-        inputLinesSpan.innerText = lines;
-        // keep output as is, user must click apply
-      });
-
-      // initial cleaning on page load (so output shows instantly)
       window.addEventListener("DOMContentLoaded", () => {
-        processAndClean(true);
+        inputTextarea.value = demoData;
+        processAndClean();
       });
-
-      // also if delimiters change, user can click apply; no auto changing to avoid confusion
-      // special requirement: originally "when i input this strings, my mouse hover and it can deleted the repeated objects"
-      // we don't have mouse hover removal of rows, but we provide duplicate removal based on cleaned output (remove repeated objects)
-      // Deduplication active each time apply is clicked, so repeated objects are deleted transparently.
-      // also we allow copy/paste from output directly without any extra buttons for import/export modals.
-
-      // add optional ability to "reset" patterns but not needed: just change fields and apply.
-      // also extra: 'clear' button? not required, but user can manually delete input.
-      // final tweak: if user wants to see changes after modifying delimiter, there's apply button.
-      // also provide keyboard shortcut: Ctrl+Shift+Enter to apply? existing ctrl+enter works.
-
-      // ensure output textarea readonly but selectable (good)
-      // final adjust: sync outputLines update after apply
-      function syncOutputLinesMetric() {
-        const outLines = outputTextarea.value
-          .split(/\r?\n/)
-          .filter((l) => l.trim() !== "").length;
-        outputLinesSpan.innerText = outLines;
-      }
-
-      // override processAndClean to also call sync lines properly
-      const originalProcess = processAndClean;
-      window.processAndClean = function (shouldDeduplicate) {
-        originalProcess(shouldDeduplicate);
-        syncOutputLinesMetric();
-      };
-      processAndClean = function (shouldDeduplicate) {
-        const rawText = inputTextarea.value;
-        if (!rawText.trim()) {
-          outputTextarea.value = "";
-          updateStats();
-          syncOutputLinesMetric();
-          return;
-        }
-        let lines = rawText.split(/\r?\n/);
-        const beforeVal = beforeInput.value;
-        const afterVal = afterInput.value;
-        const regexVal = regexInput.value;
-        let cleanedLines = lines.map((line) =>
-          cleanLine(line, beforeVal, afterVal, regexVal),
-        );
-        cleanedLines = cleanedLines.filter((line) => line !== "");
-        if (shouldDeduplicate) {
-          const seen = new Set();
-          const unique = [];
-          for (const line of cleanedLines) {
-            if (!seen.has(line)) {
-              seen.add(line);
-              unique.push(line);
-            }
-          }
-          cleanedLines = unique;
-        }
-        outputTextarea.value = cleanedLines.join("\n");
-        updateStats();
-        syncOutputLinesMetric();
-      };
-      // rebind references
-      window.processAndClean = processAndClean;
-      applyBtn.onclick = () => processAndClean(true);
-
-      // fix initial stats after load.
-      function finalInit() {
-        inputTextarea.dispatchEvent(new Event("input"));
-        processAndClean(true);
-      }
-      finalInit();
     </script>
   </body>
 </html>
