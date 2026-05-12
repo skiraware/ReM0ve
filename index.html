@@ -267,7 +267,7 @@
         display: flex;
         gap: 1.8rem;
         margin-top: 0.5rem;
-        align-items: stretch; /* Ensures both columns match height */
+        align-items: stretch;
       }
 
       @media (max-width: 768px) {
@@ -285,7 +285,7 @@
         overflow: hidden;
         display: flex;
         flex-direction: column;
-        min-height: 500px; /* Base height for symmetry */
+        min-height: 500px;
       }
 
       .panel-header {
@@ -320,12 +320,12 @@
         border: none;
         width: 100%;
         outline: none;
-        resize: none; /* Disabled manual resize to force symmetry */
+        resize: none;
       }
 
       /* Split View Layout */
       .split-layout {
-        display: none; /* hidden by default, switched to flex in JS */
+        display: none;
         flex-direction: column;
         flex: 1;
       }
@@ -459,6 +459,13 @@
               </div>
               <div
                 class="custom-option"
+                data-value="smb"
+                data-desc="Parses SMB RID brute output to extract system info and usernames."
+              >
+                SMB RID Report
+              </div>
+              <div
+                class="custom-option"
                 data-value="basic"
                 data-desc="Removes unwanted strings occurring before or after your specified delimiters."
               >
@@ -477,6 +484,13 @@
                 data-desc="Splits lines by a colon into two separate output boxes (upper & lower)."
               >
                 Split Output
+              </div>
+              <div
+                class="custom-option"
+                data-value="snmp"
+                data-desc="Parses SNMP walk output to generate an snmp-check style report."
+              >
+                SNMP Report
               </div>
             </div>
           </div>
@@ -550,6 +564,15 @@
             ></textarea>
           </div>
 
+          <div id="snmpLayout" class="textarea-wrapper" style="display: none">
+            <textarea
+              id="outputAreaSnmp"
+              class="textarea-clean interactive-output"
+              readonly
+              placeholder="Report will appear here..."
+            ></textarea>
+          </div>
+
           <div class="stats">
             <span>cleaned lines: <span id="outputLines">0</span></span>
             <span>
@@ -582,6 +605,7 @@
       const outputTextarea = document.getElementById("outputArea");
       const outputTop = document.getElementById("outputAreaTop");
       const outputBottom = document.getElementById("outputAreaBottom");
+      const outputSnmp = document.getElementById("outputAreaSnmp");
 
       const beforeInput = document.getElementById("beforeDelim");
       const afterInput = document.getElementById("afterDelim");
@@ -592,6 +616,7 @@
       // Layout Toggles
       const singleLayout = document.getElementById("singleLayout");
       const splitLayout = document.getElementById("splitLayout");
+      const snmpLayout = document.getElementById("snmpLayout");
 
       // Fetch GitHub Update Time
       fetch("https://api.github.com/repos/skiraware/ReM0ve")
@@ -728,6 +753,7 @@
           outputTextarea.value = "";
           outputTop.value = "";
           outputBottom.value = "";
+          outputSnmp.value = "";
           updateLineCounters();
           return;
         }
@@ -741,10 +767,11 @@
         let topLines = [];
         let bottomLines = [];
 
-        // MODE 1: Extract User:Hash (Removes non-matching lines automatically)
+        // MODE 1: Extract User:Hash
         if (currentMode === "hashcat") {
           singleLayout.style.display = "flex";
           splitLayout.style.display = "none";
+          snmpLayout.style.display = "none";
           for (let line of lines) {
             let text = line.replace(/\u00A0/g, " ");
             let match = text.match(/([^\s>]+)\s*:\s*([^\s<]+)/);
@@ -754,10 +781,11 @@
           }
         }
 
-        // MODE 2: Split Output Mode (Upper & Lower)
+        // MODE 2: Split Output Mode
         else if (currentMode === "split") {
           singleLayout.style.display = "none";
           splitLayout.style.display = "flex";
+          snmpLayout.style.display = "none";
           for (let line of lines) {
             let text = line.replace(/\u00A0/g, " ").trim();
             if (!text) continue;
@@ -769,10 +797,11 @@
           }
         }
 
-        // MODE 3: Keep matching Regex (Removes non-matching lines)
+        // MODE 3: Keep matching Regex
         else if (currentMode === "keepRegex") {
           singleLayout.style.display = "flex";
           splitLayout.style.display = "none";
+          snmpLayout.style.display = "none";
           let rx;
           try {
             rx = regexVal ? new RegExp(regexVal) : /.*/;
@@ -786,21 +815,166 @@
           }
         }
 
-        // MODE 4: Basic pattern cleaner
+        // MODE 4: SMB RID Report
+        else if (currentMode === "smb") {
+          singleLayout.style.display = "none";
+          splitLayout.style.display = "none";
+          snmpLayout.style.display = "flex";
+
+          let sysInfo = "";
+          let users = [];
+
+          for (let line of lines) {
+            // Find system info line
+            let sysMatch = line.match(/\[\*\]\s+(Windows.*)/i);
+            if (sysMatch && !sysInfo) sysInfo = sysMatch[1];
+
+            // Match sid type user avoiding the domain strings preceding them
+            let userMatch = line.match(
+              /\d+:\s+(?:[^\\]+\\)?([^\s]+)\s+\(SidTypeUser\)/i,
+            );
+            if (userMatch) users.push(userMatch[1]);
+          }
+
+          let report = [];
+
+          if (sysInfo) {
+            report.push(sysInfo);
+            report.push("");
+          }
+          if (users.length > 0) {
+            users.forEach((u) => report.push(u));
+          }
+
+          outputSnmp.value = report.join("\n").trim();
+        }
+
+        // MODE 5: SNMP Report
+        else if (currentMode === "snmp") {
+          singleLayout.style.display = "none";
+          splitLayout.style.display = "none";
+          snmpLayout.style.display = "flex";
+
+          let sysInfo = {};
+          let interfaces = {};
+          let processes = {};
+          let software = [];
+          let ips = [];
+
+          for (let line of lines) {
+            let match = line.match(/^([a-zA-Z0-9\.-]+)\s*=\s*(.*?):\s*(.*)$/);
+            if (!match) {
+              match = line.match(/^([a-zA-Z0-9\.-]+)\s*=\s*(.*)$/);
+              if (!match) continue;
+              match = [match[0], match[1], "STRING", match[2]];
+            }
+
+            let oid = match[1];
+            let val = match[3] ? match[3].replace(/(^"|"$)/g, "") : "";
+
+            if (oid === "iso.3.6.1.2.1.1.1.0") sysInfo["Description"] = val;
+            else if (oid === "iso.3.6.1.2.1.1.3.0") sysInfo["Uptime"] = val;
+            else if (oid === "iso.3.6.1.2.1.1.4.0") sysInfo["Contact"] = val;
+            else if (oid === "iso.3.6.1.2.1.1.5.0") sysInfo["Hostname"] = val;
+            else if (oid === "iso.3.6.1.2.1.1.6.0") sysInfo["Location"] = val;
+            else if (oid.startsWith("iso.3.6.1.2.1.4.20.1.1.")) ips.push(val);
+            // Map process name (.2) and process parameters (.5) together by ID
+            else if (oid.startsWith("iso.3.6.1.2.1.25.4.2.1.2.")) {
+              let idx = oid.split(".").pop();
+              if (!processes[idx]) processes[idx] = {};
+              processes[idx].name = val;
+            } else if (oid.startsWith("iso.3.6.1.2.1.25.4.2.1.5.")) {
+              let idx = oid.split(".").pop();
+              if (!processes[idx]) processes[idx] = {};
+              processes[idx].params = val;
+            } else if (oid.startsWith("iso.3.6.1.2.1.25.6.3.1.2."))
+              software.push(val);
+            else if (oid.startsWith("iso.3.6.1.2.1.2.2.1.2.")) {
+              let idx = oid.split(".").pop();
+              if (!interfaces[idx]) interfaces[idx] = {};
+              interfaces[idx].name = val;
+            } else if (oid.startsWith("iso.3.6.1.2.1.2.2.1.6.")) {
+              let idx = oid.split(".").pop();
+              if (!interfaces[idx]) interfaces[idx] = {};
+              interfaces[idx].mac = val;
+            }
+          }
+
+          let report = [];
+          report.push("[*] System Information");
+          report.push(
+            "---------------------------------------------------------",
+          );
+          for (let k in sysInfo) report.push(`${k.padEnd(15)}: ${sysInfo[k]}`);
+          if (Object.keys(sysInfo).length === 0)
+            report.push("No system info found.");
+
+          report.push("");
+          report.push("[*] Network Interfaces");
+          report.push(
+            "---------------------------------------------------------",
+          );
+          let hasIf = false;
+          for (let k in interfaces) {
+            report.push(
+              `Interface ${k}: ${interfaces[k].name || "Unknown"} (MAC: ${interfaces[k].mac || "None"})`,
+            );
+            hasIf = true;
+          }
+          if (!hasIf) report.push("No network interfaces found.");
+
+          report.push("");
+          report.push("[*] IP Addresses");
+          report.push(
+            "---------------------------------------------------------",
+          );
+          if (ips.length > 0) ips.forEach((ip) => report.push(ip));
+          else report.push("No IP addresses found.");
+
+          report.push("");
+          report.push("[*] Running Processes (with parameters)");
+          report.push(
+            "---------------------------------------------------------",
+          );
+          let hasProc = false;
+          for (let k in processes) {
+            let pName = processes[k].name || "";
+            let pParams = processes[k].params || "";
+            let fullCmd = (pName + " " + pParams).trim();
+            if (fullCmd) {
+              report.push(`[PID ${k}] ${fullCmd}`);
+              hasProc = true;
+            }
+          }
+          if (!hasProc) report.push("No processes found.");
+
+          report.push("");
+          report.push("[*] Installed Software");
+          report.push(
+            "---------------------------------------------------------",
+          );
+          if (software.length > 0) software.forEach((s) => report.push(s));
+          else report.push("No software found.");
+
+          outputSnmp.value = report.join("\n");
+        }
+
+        // MODE 6: Basic pattern cleaner
         else {
           singleLayout.style.display = "flex";
           splitLayout.style.display = "none";
+          snmpLayout.style.display = "none";
           cleanedLines = lines.map((line) =>
             cleanLineBasic(line, beforeVal, afterVal, regexVal),
           );
         }
 
-        // Remove empty lines and Deduplicate
-        if (currentMode !== "split") {
+        // Remove empty lines and Deduplicate for basic, hashcat, and keepRegex modes
+        if (["hashcat", "basic", "keepRegex"].includes(currentMode)) {
           cleanedLines = cleanedLines.filter((line) => line !== "");
           cleanedLines = [...new Set(cleanedLines)];
           outputTextarea.value = cleanedLines.join("\n");
-        } else {
+        } else if (currentMode === "split") {
           outputTop.value = topLines.join("\n");
           outputBottom.value = bottomLines.join("\n");
         }
@@ -842,6 +1016,7 @@
       applyDoubleClickRemoval(outputTextarea);
       applyDoubleClickRemoval(outputTop);
       applyDoubleClickRemoval(outputBottom);
+      applyDoubleClickRemoval(outputSnmp);
 
       function updateLineCounters() {
         document.getElementById("inputLines").innerText = inputTextarea.value
@@ -854,6 +1029,10 @@
             outputTop.value.split(/\r?\n/).filter((l) => l.trim()).length,
             outputBottom.value.split(/\r?\n/).filter((l) => l.trim()).length,
           );
+        } else if (currentMode === "snmp" || currentMode === "smb") {
+          outCount = outputSnmp.value
+            .split(/\r?\n/)
+            .filter((l) => l.trim()).length;
         } else {
           outCount = outputTextarea.value
             .split(/\r?\n/)
@@ -866,6 +1045,8 @@
         let outputText = "";
         if (currentMode === "split") {
           outputText = outputTop.value + "\n\n" + outputBottom.value;
+        } else if (currentMode === "snmp" || currentMode === "smb") {
+          outputText = outputSnmp.value;
         } else {
           outputText = outputTextarea.value;
         }
@@ -890,18 +1071,28 @@
         }
       });
 
-      // Demo payload
-      const demoData = `admin                                             :665a50ac9eaa781e4f7f04199db97a11
-3
-admin :21232f297a57a5a743894a0e4a801fc3
-3
-<div class="d-flex movie align-items-end">
-	<div class="mr-auto p-2">
-		<h5 class="p-2">Robert                                            :f03b910e2bd0313a23fdd7575f34a694                  </h5>
-	</div>
-</div>`;
+      // Demo payload updated to SMB logs
+      const demoData = `SMB         192.168.101.250 445    WINPREP          [*] Windows 11 Build 22000 x64 (name:WINPREP) (domain:WINPREP) (signing:False) (SMBv1:None)
+
+SMB         192.168.101.250 445    WINPREP          [+] WINPREP\\offsec:lab
+
+SMB         192.168.101.250 445    WINPREP          500: WINPREP\\Administrator (SidTypeUser)
+
+SMB         192.168.101.250 445    WINPREP          501: WINPREP\\Guest (SidTypeUser)
+
+SMB         192.168.101.250 445    WINPREP          503: WINPREP\\DefaultAccount (SidTypeUser)
+
+SMB         192.168.101.250 445    WINPREP          504: WINPREP\\WDAGUtilityAccount (SidTypeUser)
+
+SMB         192.168.101.250 445    WINPREP          513: WINPREP\\None (SidTypeGroup)
+
+SMB         192.168.101.250 445    WINPREP          1001: WINPREP\\offsec (SidTypeUser)`;
 
       window.addEventListener("DOMContentLoaded", () => {
+        // Automatically default to the new SMB mode for demonstration
+        currentMode = "smb";
+        document.getElementById("selectTrigger").innerText = "SMB RID Report";
+
         inputTextarea.value = demoData;
         processAndClean();
       });
