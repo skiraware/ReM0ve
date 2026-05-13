@@ -321,6 +321,7 @@
         width: 100%;
         outline: none;
         resize: none;
+        white-space: pre-wrap;
       }
 
       /* Split View Layout */
@@ -456,6 +457,13 @@
                 data-desc="Locates colon-separated values, ignores HTML tags, and drops non-matching lines."
               >
                 Extract User:Hash
+              </div>
+              <div
+                class="custom-option"
+                data-value="mimikatz"
+                data-desc="Parses Mimikatz lsadump & sekurlsa output into username:domain:NTLM:password format."
+              >
+                Parse Mimikatz
               </div>
               <div
                 class="custom-option"
@@ -878,7 +886,6 @@
             else if (oid === "iso.3.6.1.2.1.1.5.0") sysInfo["Hostname"] = val;
             else if (oid === "iso.3.6.1.2.1.1.6.0") sysInfo["Location"] = val;
             else if (oid.startsWith("iso.3.6.1.2.1.4.20.1.1.")) ips.push(val);
-            // Map process name (.2) and process parameters (.5) together by ID
             else if (oid.startsWith("iso.3.6.1.2.1.25.4.2.1.2.")) {
               let idx = oid.split(".").pop();
               if (!processes[idx]) processes[idx] = {};
@@ -959,7 +966,114 @@
           outputSnmp.value = report.join("\n");
         }
 
-        // MODE 6: Basic pattern cleaner
+        // MODE 6: Mimikatz Parser (Sekurlsa & Lsadump)
+        else if (currentMode === "mimikatz") {
+          singleLayout.style.display = "flex";
+          splitLayout.style.display = "none";
+          snmpLayout.style.display = "none";
+
+          let creds = [];
+          let currentCred = {};
+          let globalDomain = "";
+
+          for (let line of lines) {
+            let tLine = line.trim();
+
+            // Catch global domains in lsadump output
+            let dMatch = tLine.match(/^Domain\s*:\s*(.*)/i);
+            if (dMatch && !tLine.includes("FQDN")) {
+              globalDomain = dMatch[1].trim();
+            }
+
+            // Block Separators (triggers a push of the previous valid cred)
+            if (
+              tLine.startsWith("Authentication Id") ||
+              tLine.startsWith("Session") ||
+              tLine.startsWith("RID  :") ||
+              tLine.startsWith("[NL$")
+            ) {
+              if (
+                currentCred.username &&
+                (currentCred.ntlm || currentCred.password)
+              ) {
+                creds.push({ ...currentCred });
+              }
+              currentCred = {};
+            }
+
+            // Extract values (handles both sekurlsa and lsadump formats)
+            let userMatch1 =
+              tLine.match(/^(?:\*\s*)?Username\s*:\s*(.*)/i) ||
+              tLine.match(/^User Name\s*:\s*(.*)/i);
+            let userMatch2 = tLine.match(/^User\s*:\s*(.*)/i); // lsadump
+            let domainMatch = tLine.match(/^(?:\*\s*)?Domain\s*:\s*(.*)/i);
+            let ntlmMatch = tLine.match(/^(?:\*\s*)?NTLM\s*:\s*(.*)/i);
+            let hashNtlmMatch = tLine.match(/^Hash NTLM\s*:\s*(.*)/i); // lsadump::sam
+            let msCacheMatch = tLine.match(/^MsCacheV2\s*:\s*(.*)/i); // lsadump::cache
+            let passMatch = tLine.match(/^(?:\*\s*)?Password\s*:\s*(.*)/i);
+
+            // Populate current block
+            if (userMatch1) {
+              let v = userMatch1[1].trim();
+              if (v && v !== "(null)") currentCred.username = v;
+            }
+            if (userMatch2) {
+              let v = userMatch2[1].trim();
+              if (v && v !== "(null)") {
+                // If lsadump user has domain prepended (e.g., OSCP\eric.wallows)
+                if (v.includes("\\")) {
+                  let parts = v.split("\\");
+                  currentCred.domain = parts[0];
+                  currentCred.username = parts[1];
+                } else {
+                  currentCred.username = v;
+                }
+              }
+            }
+            if (domainMatch && !tLine.includes("FQDN")) {
+              let v = domainMatch[1].trim();
+              if (v && v !== "(null)") currentCred.domain = v;
+            }
+            if (ntlmMatch) {
+              let v = ntlmMatch[1].trim();
+              if (v && v !== "(null)") currentCred.ntlm = v;
+            }
+            if (hashNtlmMatch) {
+              let v = hashNtlmMatch[1].trim();
+              if (v && v !== "(null)") currentCred.ntlm = v;
+            }
+            if (msCacheMatch) {
+              let v = msCacheMatch[1].trim();
+              if (v && v !== "(null)") currentCred.ntlm = v;
+            }
+            if (passMatch) {
+              let v = passMatch[1].trim();
+              if (v && v !== "(null)") currentCred.password = v;
+            }
+          }
+
+          // Push final block if valid
+          if (
+            currentCred.username &&
+            (currentCred.ntlm || currentCred.password)
+          ) {
+            creds.push({ ...currentCred });
+          }
+
+          // Format output: username:domain:NTLM(or MsCache):plaintextpassword
+          for (let c of creds) {
+            let u = c.username || "";
+            let d = c.domain || globalDomain || "";
+            let n = c.ntlm || "";
+            let p = c.password || "";
+            if (u && (n || p)) {
+              // ensure there is a user and some form of credential
+              cleanedLines.push(`${u}:${d}:${n}:${p}`);
+            }
+          }
+        }
+
+        // MODE 7: Basic pattern cleaner
         else {
           singleLayout.style.display = "flex";
           splitLayout.style.display = "none";
@@ -969,8 +1083,10 @@
           );
         }
 
-        // Remove empty lines and Deduplicate for basic, hashcat, and keepRegex modes
-        if (["hashcat", "basic", "keepRegex"].includes(currentMode)) {
+        // Remove empty lines and Deduplicate
+        if (
+          ["hashcat", "basic", "keepRegex", "mimikatz"].includes(currentMode)
+        ) {
           cleanedLines = cleanedLines.filter((line) => line !== "");
           cleanedLines = [...new Set(cleanedLines)];
           outputTextarea.value = cleanedLines.join("\n");
@@ -1071,27 +1187,12 @@
         }
       });
 
-      // Demo payload updated to SMB logs
-      const demoData = `SMB         192.168.101.250 445    WINPREP          [*] Windows 11 Build 22000 x64 (name:WINPREP) (domain:WINPREP) (signing:False) (SMBv1:None)
-
-SMB         192.168.101.250 445    WINPREP          [+] WINPREP\\offsec:lab
-
-SMB         192.168.101.250 445    WINPREP          500: WINPREP\\Administrator (SidTypeUser)
-
-SMB         192.168.101.250 445    WINPREP          501: WINPREP\\Guest (SidTypeUser)
-
-SMB         192.168.101.250 445    WINPREP          503: WINPREP\\DefaultAccount (SidTypeUser)
-
-SMB         192.168.101.250 445    WINPREP          504: WINPREP\\WDAGUtilityAccount (SidTypeUser)
-
-SMB         192.168.101.250 445    WINPREP          513: WINPREP\\None (SidTypeGroup)
-
-SMB         192.168.101.250 445    WINPREP          1001: WINPREP\\offsec (SidTypeUser)`;
-
+      // Updated Demo payload with provided lsadump::sam & lsadump::cache data
+      const demoData = "";
       window.addEventListener("DOMContentLoaded", () => {
-        // Automatically default to the new SMB mode for demonstration
-        currentMode = "smb";
-        document.getElementById("selectTrigger").innerText = "SMB RID Report";
+        // Automatically default to Mimikatz mode for demonstration
+        currentMode = "mimikatz";
+        document.getElementById("selectTrigger").innerText = "Parse Mimikatz";
 
         inputTextarea.value = demoData;
         processAndClean();
